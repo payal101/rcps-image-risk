@@ -1,6 +1,6 @@
 # RCPS for image regression: a readable walkthrough
 
-This tutorial explains how the notebook uses risk-controlling prediction sets (RCPS) to control the average fraction of missed pixels in CT images. The equations are written in plain text so they remain readable even in viewers that do not render LaTeX.
+This tutorial explains how the notebook uses risk-controlling prediction sets (RCPS) to control the average fraction of missed pixels in CT images. Equations use GitHub's `$$ ... $$` math formatting, with a plain-language explanation directly after each one.
 
 ## 1. What goes into the model?
 
@@ -13,55 +13,52 @@ A small CNN learns a prediction rule called `f`. Given an input `X`, it produces
 
 ## 2. How do we make an interval image?
 
-For each pixel, the model's predicted intensity is the center. We add and subtract a chosen radius, `lambda`:
+For each pixel, the model's predicted intensity is the center. We add and subtract a chosen radius, \(\lambda\):
 
-```text
-lower pixel value = max(0, predicted pixel value - lambda)
-upper pixel value = min(1, predicted pixel value + lambda)
-```
+$$
+T_{\lambda}(X)_p
+=\left[\max\{0, f(X)_p-\lambda\},\;\min\{1, f(X)_p+\lambda\}\right].
+$$
 
-Together, these lower and upper values form an interval at every pixel. Values are clipped to `[0, 1]`, the image intensity range. A larger `lambda` makes wider intervals.
-
-In notation, for pixel `p`:
-
-```text
-T_lambda(X)[p] = [ lower value at p, upper value at p ]
-```
-
-`T_lambda(X)` means the whole collection of pixel intervals for input image `X`.
+Here, \(p\) identifies a pixel and \(f(X)_p\) is the model's predicted value there. The endpoints are clipped to the target intensity range \([0,1]\). \(T_{\lambda}(X)\) is the collection of intervals for all pixels in image \(X\). A larger \(\lambda\) makes wider intervals.
 
 ## 3. How do we score one image?
 
-For one image, count how many target pixels fall outside their intervals, then divide by the total number of pixels:
+For image \(i\), let \(P\) be its total number of pixels. Its loss is
 
-```text
-image loss = missed-pixel count / total-pixel count
-```
+$$
+L_i(\lambda)
+=\frac{1}{P}\sum_{p=1}^{P}
+\mathbf{1}\!\left\{Y_{i,p}\notin T_{\lambda}(X_i)_p\right\}.
+$$
 
-For example, a loss of `0.03` means the intervals missed 3% of the pixels in that image.
+The indicator \(\mathbf{1}\{\cdot\}\) equals 1 when the target pixel is outside its interval and 0 otherwise. Thus \(L_i(\lambda)\) is the fraction of missed pixels in image \(i\). For example, \(L_i(\lambda)=0.03\) means 3% of its pixels were missed.
 
 Each image contributes **one loss number** between 0 and 1 to calibration. We do not pretend pixels inside an image are independent. Their misses are combined into one image-level number.
 
 ## 4. What risk are we trying to control?
 
-Imagine repeatedly drawing a new image pair `(X, Y)` from the population of interest and calculating its image loss. The population risk is the average of those losses:
+Imagine repeatedly drawing a new image pair \((X,Y)\) from the population of interest and calculating its image loss. The population risk is
 
-```text
-R(lambda) = average image loss over new image pairs, using radius lambda
-```
+$$
+R(\lambda)
+=\mathbb{E}_{(X,Y)\sim\mathcal{D}}\!\left[L_{\lambda}(X,Y)\right].
+$$
+
+In words, \(R(\lambda)\) is the average fraction of pixels missed over new images. The expectation is over new image pairs, not over pixels treated as independent samples.
 
 We choose:
 
 - `alpha`: the largest acceptable average miss fraction per image.
 - `delta`: the chance that calibration fails to certify the chosen radius.
 
-The RCPS goal is:
+The RCPS goal is
 
-```text
-Probability over calibration data that R(chosen lambda) > alpha <= delta
-```
+$$
+\Pr_{S_{\mathrm{cal}}}\!\left\{R(\widehat{\lambda})>\alpha\right\}\leq\delta.
+$$
 
-In words: with confidence at least `1 - delta`, the chosen intervals have an expected miss fraction no greater than `alpha` on a new image pair.
+Here, \(S_{\mathrm{cal}}\) is the random calibration sample and \(\widehat{\lambda}\) is the radius selected from it. In words: with confidence at least \(1-\delta\), the chosen intervals have expected miss fraction no greater than \(\alpha\) on a new image pair.
 
 Example: `alpha = 0.10` and `delta = 0.10` means the target average miss fraction is at most 10%, with a 90% confidence certificate—if calibration succeeds. This does **not** promise that every image misses at most 10% of its pixels, or that 90% of images have every pixel covered.
 
@@ -69,22 +66,32 @@ Example: `alpha = 0.10` and `delta = 0.10` means the target average miss fractio
 
 Before looking at calibration outcomes, the notebook sets a grid of possible radii. For every calibration image, it calculates the image loss at every radius.
 
-For a given radius, the average calibration loss estimates the risk. RCPS also calculates an upper confidence bound (`UCB`) to account for finite calibration data. With the Hoeffding option, the formula is:
+For a given radius, the average calibration loss estimates the risk. RCPS also calculates an upper confidence bound (`UCB`) to account for finite calibration data. With the Hoeffding option, the bound is
 
-```text
-UCB = min(1, average calibration loss
-             + sqrt(log(1 / delta) / (2 * number of calibration images)))
-```
+$$
+U_{\mathrm{H}}(\lambda)
+=\min\!\left\{1,\;
+\widehat{R}_{\mathrm{cal}}(\lambda)
++\sqrt{\frac{\log(1/\delta)}{2n_{\mathrm{cal}}}}\right\}.
+$$
 
 Here:
 
-- `average calibration loss` is the mean of the per-image losses at that radius.
-- `number of calibration images` is 300 in this notebook.
-- `delta` sets the confidence level; for example, `delta = 0.10` means 90% confidence.
+- \(\widehat{R}_{\mathrm{cal}}(\lambda)\) is the average loss measured on calibration images at radius \(\lambda\).
+- \(n_{\mathrm{cal}}\) is the number of calibration images (300 in this notebook).
+- \(\delta\) sets the confidence level; for example, \(\delta=0.10\) means 90% confidence.
 
 The notebook also offers the WSR bound from Bates et al. It uses the same bounded, per-image losses but a different confidence-bound calculation. WSR can be tighter than Hoeffding in some cases, but not always.
 
-The selection rule is:
+Let the tested radii be \(\lambda_1<\lambda_2<\cdots<\lambda_K\), and let \(U_j\) be the risk upper bound for radius \(\lambda_j\). The selection rule is
+
+$$
+\widehat{k}
+=\min\left\{k:\;\max_{j\geq k}U_j<\alpha\right\},
+\qquad \widehat{\lambda}=\lambda_{\widehat{k}}.
+$$
+
+The maximum over \(j\geq k\) is shorthand for checking the bound at radius \(k\) and every larger radius. In steps:
 
 1. Start with the smallest radius.
 2. Check whether its risk upper bound is below `alpha`.
