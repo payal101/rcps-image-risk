@@ -7,6 +7,7 @@ The statistical unit is one image pair `(X_i, Y_i)`. Pixels within an image may 
 ## What is in this repository
 
 - `notebooks/lodopab_rcps.ipynb` — end-to-end Colab-friendly data, training, calibration, test diagnostics, and visualization.
+- `TUTORIAL.md` — step-by-step explanation of the experiment, outputs, and guarantee.
 - `src/rcps/` — reusable bounded-risk confidence bounds, monotone-family RCPS calibration, and image interval losses.
 - `docs/method.md` — equations, assumptions, and interpretation of the output.
 
@@ -57,7 +58,7 @@ The Gaussian chi-square comparison is not applicable to this pixelwise bounded-l
 
 ## Data and limitations
 
-The notebook uses LoDoPaB-derived target images from the `AmirEhsan1995/lodopab-ct-glimpse` Hugging Face dataset. Inputs are simulated from those targets with sparse-view Radon projections, added Gaussian noise, and filtered back projection. They are **not** the official LoDoPaB measurement inputs. The dataset mirror does not provide patient grouping metadata, so this experiment can support only an image-level IID/exchangeability working assumption, not a patient-level independence claim. It is a reproducible research stress test, not a clinical validation.
+The notebook uses LoDoPaB-derived target images from the `AmirEhsan1995/lodopab-ct-glimpse` Hugging Face dataset. Inputs are simulated from those targets with sparse-view Radon projections, added Gaussian noise, and filtered back projection. They are **not** the official LoDoPaB measurement inputs. The dataset mirror does not provide patient grouping metadata, so this experiment can support only an image-level IID working assumption, not a patient-level independence claim. It is a reproducible research stress test, not a clinical validation.
 
 ## Reference
 
