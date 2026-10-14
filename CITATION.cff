@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use the method, please cite Bates et al. (2021); this repository is an independent implementation."
+title: "RCPS for Image Regression"
+type: software
+authors:
+  - name: "RCPS Image Risk contributors"
+version: 0.1.0
+license: MIT
+references:
+  - type: article
+    authors:
+      - family-names: Bates
+        given-names: Stephen
+      - family-names: Angelopoulos
+        given-names: Anastasios N.
+      - family-names: Lei
+        given-names: Lihua
+      - family-names: Malik
+        given-names: Jitendra
+      - family-names: Jordan
+        given-names: Michael I.
+    title: "Distribution-Free, Risk-Controlling Prediction Sets"
+    year: 2021
+    journal: "Journal of the ACM"
+    volume: 68
+    issue: 6
+    doi: 10.1145/3478535

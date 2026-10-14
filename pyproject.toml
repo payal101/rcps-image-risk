@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rcps-image-risk"
+version = "0.1.0"
+description = "Small, documented risk-controlling prediction sets for image-to-image regression"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "RCPS Image Risk contributors"}]
+dependencies = ["numpy>=1.23"]
+
+[project.optional-dependencies]
+demo = ["torch>=2.0", "torchvision>=0.15", "matplotlib>=3.6", "scikit-image>=0.20", "huggingface_hub>=0.20", "jupyter>=1.0"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
