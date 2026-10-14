@@ -1,239 +1,125 @@
-# RCPS for image regression: a mathematical walkthrough
+# RCPS for image regression: a readable walkthrough
 
-This tutorial explains the image-level risk-controlling prediction set (RCPS) experiment in this repository. It defines the prediction intervals, the loss, the calibration rule, and the guarantee, then explains what the test metrics mean.
+This tutorial explains how the notebook uses risk-controlling prediction sets (RCPS) to control the average fraction of missed pixels in CT images. The equations are written in plain text so they remain readable even in viewers that do not render LaTeX.
 
-The linked UQ tutorial is a useful reference for the style of explanation, but it uses a different procedure: it evaluates a frozen prediction rule and forms a lower confidence bound on coverage. Here we select an interval size using RCPS and form an upper confidence bound on expected miss risk.
+## 1. What goes into the model?
 
-## 1. Data and prediction model
+Each example has two images:
 
-Each example is an image pair
+- `X`: the input image, a sparse-view CT scan reconstructed using filtered back projection (FBP).
+- `Y`: the target image, a LoDoPaB-derived CT image.
 
-\[
-(X_i,Y_i) \sim \mathcal{D}, \qquad i=1,\ldots,n,
-\]
+A small CNN learns a prediction rule called `f`. Given an input `X`, it produces a predicted image `f(X)`. The notebook trains `f` on 700 images, then freezes it. Calibration (300 images) chooses the interval size. The 100 test images are kept untouched until final evaluation.
 
-where \(X_i\) is an input reconstruction and \(Y_i\) is the target image. The notebook creates the input by simulating a sparse-view noisy CT measurement from a LoDoPaB-derived target and applying filtered back projection (FBP). A small convolutional neural network is trained to predict the target from the FBP input.
+## 2. How do we make an interval image?
 
-Write the trained predictor as
+For each pixel, the model's predicted intensity is the center. We add and subtract a chosen radius, `lambda`:
 
-\[
-f_{\theta}(X) \in [0,1]^{M\times N},
-\]
-
-where \(M\times N\) is the image size and \(\theta\) denotes the trained network parameters. The network is trained on the training split and then **frozen**: its parameters and the image preprocessing are not changed using calibration or test labels.
-
-The notebook uses 700 training images, 300 calibration images, and 100 test images. The first split fits \(f_{\theta}\); the second chooses the interval size; the last is used only for evaluation diagnostics.
-
-## 2. Define the prediction set
-
-For a nonnegative radius \(\lambda\), the prediction set at pixel \(p\) is the interval
-
-\[
-T_{\lambda}(X)_p
-=\left[\max\{0,f_{\theta}(X)_p-\lambda\},\;
-        \min\{1,f_{\theta}(X)_p+\lambda\}\right].
-\]
-
-Here \(p\) indexes one of the \(P=MN\) pixels. The interval is clipped to the target intensity range \([0,1]\). Increasing \(\lambda\) makes the intervals wider, so it cannot turn a covered pixel into a missed pixel.
-
-The set \(T_{\lambda}(X)\) is a collection of intervals, one per pixel. It is **not** one interval for the entire image, and this construction does not by itself give a guarantee that every pixel is covered simultaneously.
-
-## 3. Reduce each image to one bounded loss
-
-For image pair \((X_i,Y_i)\), define the loss
-
-\[
-L_{\lambda}(X_i,Y_i)
-=\frac{1}{P}\sum_{p=1}^{P}
-  \mathbf{1}\!\left\{Y_{i,p}\notin T_{\lambda}(X_i)_p\right\}.
-\]
-
-The indicator \(\mathbf{1}\{\cdot\}\) equals one when its condition is true and zero otherwise. Thus \(L_{\lambda}\) is the fraction of pixels missed in image \(i\), and always lies in \([0,1]\).
-
-Although an image contains many pixels, the statistical observation used by RCPS is **one image-level loss**. Pixels inside an image may be dependent; the method does not assume pixel independence. The sampling assumption is about different image pairs.
-
-For a fixed radius \(\lambda\), the population risk is
-
-\[
-R(\lambda)
-=\mathbb{E}_{(X,Y)\sim\mathcal{D}}
-  \left[L_{\lambda}(X,Y)\right].
-\]
-
-This expectation is over a fresh image pair from the target population. It is the long-run average fraction of missed pixels per image.
-
-## 4. State the risk-control goal
-
-Choose two numbers:
-
-\[
-\alpha\in(0,1) \quad\text{and}\quad \delta\in(0,1).
-\]
-
-- \(\alpha\) is the largest acceptable **expected fraction of pixels missed per image**.
-- \(\delta\) is the probability that the calibration procedure fails to certify the target.
-
-For the radius \(\widehat{\lambda}\) selected from calibration data, the RCPS objective is
-
-\[
-\Pr_{S_{\mathrm{cal}}}\!\left\{
-  R(\widehat{\lambda})>\alpha
-\right\}\leq\delta.
-\]
-
-The probability on the left is over the random calibration sample \(S_{\mathrm{cal}}\), with the trained network and pre-specified procedure held fixed. Equivalently, with probability at least \(1-\delta\) over calibration samples, the selected rule has expected miss risk at most \(\alpha\) on a new image pair.
-
-For example, \(\alpha=0.10\) and \(\delta=0.10\) aim to certify that the **mean fraction of missed pixels** is at most 10%, with 90% confidence. They do not say that 90% of images have all pixels covered, or that every image misses at most 10% of its pixels.
-
-## 5. Estimate the risk on calibration images
-
-Let the calibration set contain \(n_{\mathrm{cal}}\) independent image pairs. At each pre-specified radius \(\lambda_k\), compute one loss per calibration image:
-
-\[
-L_{i,k}=L_{\lambda_k}(X_i,Y_i), \qquad
-\widehat{R}_{\mathrm{cal}}(\lambda_k)
-=\frac{1}{n_{\mathrm{cal}}}\sum_{i=1}^{n_{\mathrm{cal}}}L_{i,k}.
-\]
-
-The sample mean \(\widehat{R}_{\mathrm{cal}}\) is an estimate of population risk, but an estimate alone is not a risk certificate. RCPS also computes an upper confidence bound \(U_k\) satisfying, for each fixed \(\lambda_k\),
-
-\[
-\Pr\!\left\{R(\lambda_k)\leq U_k\right\}\geq 1-\delta.
-\]
-
-### Hoeffding upper bound
-
-Because each image loss is in \([0,1]\), the notebook can use
-
-\[
-U_{k}^{\mathrm{H}}
-=\min\!\left\{
-1,\;
-\widehat{R}_{\mathrm{cal}}(\lambda_k)
-+\sqrt{\frac{\log(1/\delta)}{2n_{\mathrm{cal}}}}
-\right\}.
-\]
-
-The square-root term is the finite-sample uncertainty allowance. It shrinks as the number of independent calibration images increases. The notebook also includes the WSR bound from Bates et al., which uses a wealth-sequence construction for bounded losses and can be more informative in some cases. Neither method can compensate for calibration images that are unrepresentative of future images.
-
-## 6. Select a radius from the nested family
-
-The radius grid is set before examining calibration labels:
-
-\[
-\lambda_1<\lambda_2<\cdots<\lambda_K.
-\]
-
-Because larger radii create larger intervals, the observed losses are nested and nonincreasing:
-
-\[
-L_{i,1}\geq L_{i,2}\geq\cdots\geq L_{i,K}
-\quad\text{for every calibration image }i.
-\]
-
-Using one calibration set, RCPS selects the smallest grid radius for which the upper bounds at that radius and all larger radii are below the target:
-
-\[
-\widehat{k}
-=\min\left\{
-k:\;\max_{j\geq k} U_j < \alpha
-\right\},
-\qquad
-\widehat{\lambda}=\lambda_{\widehat{k}}.
-\]
-
-The maximum over \(j\geq k\) means every larger set must pass too. This suffix check uses the nesting of the prediction sets to support selection over the radius grid without splitting calibration into separate search and risk-check subsets or applying a union bound over every radius. If the set in braces is empty, the algorithm reports **no certificate** for that \(\alpha\); it must not claim success.
-
-The reusable implementation is:
-
-```python
-import numpy as np
-from rcps import interval_loss_grid, calibrate_rcps
-
-radii = np.linspace(0.0, 1.0, 201)  # choose before inspecting calibration labels
-losses = interval_loss_grid(
-    Y_cal[:, None, :, :],
-    pred_cal.numpy(),
-    radii,
-    value_range=(0.0, 1.0),
-)
-
-result = calibrate_rcps(
-    losses,
-    radii,
-    alpha=0.10,
-    delta=0.10,
-    method="wsr",  # alternatively: "hoeffding"
-)
-
-if result.certified:
-    print("Selected lambda:", result.selected_parameter)
-    print("Selected risk upper bound:", result.selected_ucb)
-else:
-    print("No radius on this grid was certified for alpha=0.10.")
+```text
+lower pixel value = max(0, predicted pixel value - lambda)
+upper pixel value = min(1, predicted pixel value + lambda)
 ```
 
-The array `losses` has shape \((n_{\mathrm{cal}},K)\): each row is an image and each column a radius. The selected \(\lambda\) is an interval half-width in normalized image intensity units; it is not the split-conformal quantile \(q\) used in a different procedure.
+Together, these lower and upper values form an interval at every pixel. Values are clipped to `[0, 1]`, the image intensity range. A larger `lambda` makes wider intervals.
 
-## 7. Why a small calibration set may not certify a strict target
+In notation, for pixel `p`:
 
-In the notebook, \(n_{\mathrm{cal}}=300\) and \(\delta=0.10\). The Hoeffding allowance is
+```text
+T_lambda(X)[p] = [ lower value at p, upper value at p ]
+```
 
-\[
-\sqrt{\frac{\log(1/0.10)}{2\cdot 300}}
-\approx 0.062.
-\]
+`T_lambda(X)` means the whole collection of pixel intervals for input image `X`.
 
-Even if the observed calibration miss risk were zero, this bound could not fall below \(\alpha=0.01\) or \(\alpha=0.05\). This says the Hoeffding bound is too wide to certify those targets with this sample size; it does **not** show that the true risk is larger than those targets. WSR may give a different bound from the same losses, but certification still depends on the observed data and assumptions.
+## 3. How do we score one image?
 
-The notebook repeats the procedure for \(\alpha\in\{0.01,0.05,0.10,0.20\}\), using \(\delta=0.10\). Each row is an individual 90%-confidence risk statement. The four rows are not one simultaneous 90%-confidence statement.
+For one image, count how many target pixels fall outside their intervals, then divide by the total number of pixels:
 
-## 8. Evaluate on the untouched test images
+```text
+image loss = missed-pixel count / total-pixel count
+```
 
-After calibration selects \(\widehat{\lambda}\), the notebook applies it to test predictions without changing the model or radius. It reports:
+For example, a loss of `0.03` means the intervals missed 3% of the pixels in that image.
 
-### Test pixel coverage
+Each image contributes **one loss number** between 0 and 1 to calibration. We do not pretend pixels inside an image are independent. Their misses are combined into one image-level number.
 
-\[
-\widehat{C}_{\mathrm{pixel}}
-=\frac{1}{n_{\mathrm{test}}P}
-  \sum_{i=1}^{n_{\mathrm{test}}}\sum_{p=1}^{P}
-  \mathbf{1}\!\left\{
-  Y_{i,p}\in T_{\widehat{\lambda}}(X_i)_p
-  \right\}.
-\]
+## 4. What risk are we trying to control?
 
-This is the fraction of all test pixels inside their intervals. For equal-size images,
-\(1-\widehat{C}_{\mathrm{pixel}}\) equals the average fractional-pixel miss loss across test images. It is a test-set diagnostic; the guarantee comes from calibration, not from this calculation.
+Imagine repeatedly drawing a new image pair `(X, Y)` from the population of interest and calculating its image loss. The population risk is the average of those losses:
 
-### Test whole-image coverage
+```text
+R(lambda) = average image loss over new image pairs, using radius lambda
+```
 
-\[
-\widehat{C}_{\mathrm{image}}
-=\frac{1}{n_{\mathrm{test}}}\sum_{i=1}^{n_{\mathrm{test}}}
-  \mathbf{1}\!\left\{
-  Y_{i,p}\in T_{\widehat{\lambda}}(X_i)_p
-  \text{ for every pixel }p
-  \right\}.
-\]
+We choose:
 
-This is the fraction of test images with no missed pixels. It is a different and much stricter event. The RCPS loss defined above does not control this whole-image coverage quantity.
+- `alpha`: the largest acceptable average miss fraction per image.
+- `delta`: the chance that calibration fails to certify the chosen radius.
 
-The notebook also reports mean interval width. Width describes how large the predicted intervals are; it is not itself a coverage or risk guarantee.
+The RCPS goal is:
 
-## 9. Visualize a test example
+```text
+Probability over calibration data that R(chosen lambda) > alpha <= delta
+```
 
-The final notebook cell displays the FBP input, target, reconstruction, interval-width map, and missed-pixel mask for one untouched test image. These pictures help diagnose where the reconstruction and intervals struggle. The guarantee remains an average across new image pairs: it does not promise equal risk at every pixel, region, or image.
+In words: with confidence at least `1 - delta`, the chosen intervals have an expected miss fraction no greater than `alpha` on a new image pair.
 
-## 10. Assumptions and limitations
+Example: `alpha = 0.10` and `delta = 0.10` means the target average miss fraction is at most 10%, with a 90% confidence certificate—if calibration succeeds. This does **not** promise that every image misses at most 10% of its pixels, or that 90% of images have every pixel covered.
 
-The Hoeffding and WSR bounds require calibration image pairs to be independent and identically distributed with future image pairs, conditional on the already-trained predictor. Image pairs are the observations; pixels inside a single image may be dependent. If several images come from the same patient, image-level independence may fail unless the split accounts for patient groups. The small dataset mirror does not document patient IDs, so this experiment cannot claim patient-level generalization.
+## 5. How does calibration choose the radius?
 
-The targets are LoDoPaB-derived, but the inputs are simulated from sparse-view noisy measurements and reconstructed by FBP. The notebook therefore evaluates this constructed image-to-image task, not official LoDoPaB measurement inputs or a clinical system.
+Before looking at calibration outcomes, the notebook sets a grid of possible radii. For every calibration image, it calculates the image loss at every radius.
 
-## Related reading
+For a given radius, the average calibration loss estimates the risk. RCPS also calculates an upper confidence bound (`UCB`) to account for finite calibration data. With the Hoeffding option, the formula is:
 
-- [RCPS method notes](docs/method.md)
+```text
+UCB = min(1, average calibration loss
+             + sqrt(log(1 / delta) / (2 * number of calibration images)))
+```
+
+Here:
+
+- `average calibration loss` is the mean of the per-image losses at that radius.
+- `number of calibration images` is 300 in this notebook.
+- `delta` sets the confidence level; for example, `delta = 0.10` means 90% confidence.
+
+The notebook also offers the WSR bound from Bates et al. It uses the same bounded, per-image losses but a different confidence-bound calculation. WSR can be tighter than Hoeffding in some cases, but not always.
+
+The selection rule is:
+
+1. Start with the smallest radius.
+2. Check whether its risk upper bound is below `alpha`.
+3. Also require the bounds for every larger radius to be below `alpha`.
+4. Choose the first radius that passes.
+
+Larger radii create wider intervals and cannot increase the missed-pixel loss. This nesting lets RCPS search the radius grid using the same calibration set. We do not split calibration into a radius-search part and a separate risk-check part. If no radius passes, the notebook reports **no certificate** for that `alpha`.
+
+## 6. Why might calibration fail to certify a small `alpha`?
+
+With 300 calibration images and `delta = 0.10`, the Hoeffding formula adds about `0.062` to the observed average loss. So even if calibration misses zero pixels, the resulting upper bound is about 6.2%. It cannot be below `alpha = 0.01` or `0.05` in this example.
+
+That means the Hoeffding bound is too wide to certify those strict targets with this sample size. It does **not** prove the true risk is above the target. More representative calibration images can shrink the Hoeffding allowance. WSR may produce a different bound based on the observed losses.
+
+The notebook repeats calibration for `alpha = 0.01, 0.05, 0.10, 0.20`, using `delta = 0.10`. Each row is a separate 90%-confidence claim; the four rows are not jointly certified at 90% confidence.
+
+## 7. How do we evaluate on the test images?
+
+After calibration chooses `lambda`, the notebook applies it to predictions for the untouched test images. Test results do not select the radius and do not create the certificate.
+
+- **Test pixel coverage:** fraction of all test pixels inside their intervals. One minus this number is the average fractional-pixel miss loss on the test set.
+- **Test whole-image coverage:** fraction of test images where every pixel is covered. This is a different, stricter quantity. RCPS here does not control it.
+- **Mean interval width:** average size of the pixel intervals. It describes how wide the intervals are, not whether the risk guarantee holds.
+
+The notebook also visualizes one test example: input, target, prediction, interval width, and missed pixels. This helps reveal where the model has difficulty. The formal risk target is still averaged over images; it does not promise the same error rate at every pixel or on every image.
+
+## 8. Assumptions and limitations
+
+The Hoeffding and WSR bounds assume image pairs in calibration are independent and identically distributed with future image pairs, conditional on the already-trained model. Pixels within an image can be dependent because we combine them into one loss. If multiple images come from the same patient, image-level independence may fail unless the split accounts for patient groups. The small dataset mirror does not document patient IDs, so this experiment cannot establish patient-level generalization.
+
+The targets are LoDoPaB-derived, but the input CT scans are simulated using sparse views, noise, and FBP. This is a research stress test on a constructed image-to-image task, not a test on official LoDoPaB measurement inputs or a clinical validation.
+
+## Related files
+
 - [Runnable LoDoPaB notebook](notebooks/lodopab_rcps.ipynb)
+- [More detailed method notes](docs/method.md)
 - [Bates et al., *Distribution-Free, Risk-Controlling Prediction Sets*](https://doi.org/10.1145/3478535)
-- [Tutorial that inspired this explanatory format](https://github.com/jatinbatra50/jatinbatra50/blob/provable-uq-tutorial/TUTORIAL.md)
+- [Tutorial that inspired this format](https://github.com/jatinbatra50/jatinbatra50/blob/provable-uq-tutorial/TUTORIAL.md)
